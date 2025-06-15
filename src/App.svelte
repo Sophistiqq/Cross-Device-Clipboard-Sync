@@ -12,6 +12,7 @@ import {
 } from "lucide-svelte";
 import { onMount } from "svelte";
 
+// --- LOGIC FROM YOUR SCRIPT ---
 let serverUrl = "";
 let input = "";
 let status = "";
@@ -20,9 +21,10 @@ let isChecking = false;
 let isSending = false;
 let isPasting = false;
 let clipboardHistory: string[] = [];
-let showHistory = false;
-let showSettings = false;
 let autoCheckInterval: number;
+
+// --- STATE FOR NEW UI ---
+let currentTab: "history" | "settings" = "history";
 
 onMount(() => {
 	serverUrl = localStorage.getItem("cdcs-server") || "";
@@ -34,7 +36,7 @@ onMount(() => {
 	if (serverUrl) {
 		checkServerConnection();
 		// Auto-check connection every 30 seconds
-		autoCheckInterval = setInterval(checkServerConnection, 30000);
+		autoCheckInterval = window.setInterval(checkServerConnection, 30000);
 	}
 
 	return () => {
@@ -84,7 +86,7 @@ function saveServer() {
 	if (serverUrl) {
 		checkServerConnection();
 		if (autoCheckInterval) clearInterval(autoCheckInterval);
-		autoCheckInterval = setInterval(checkServerConnection, 30000);
+		autoCheckInterval = window.setInterval(checkServerConnection, 30000);
 	}
 }
 
@@ -100,6 +102,7 @@ async function sendClipboard() {
 	if (!serverUrl || !input.trim() || !isConnected) return;
 
 	isSending = true;
+	status = "📋 Sending to server...";
 	try {
 		const res = await fetch(`${serverUrl}/clipboard`, {
 			method: "POST",
@@ -108,14 +111,14 @@ async function sendClipboard() {
 		});
 
 		if (res.ok) {
-			status = "📋 Sent successfully!";
+			status = "✅ Sent successfully!";
 			addToHistory(input);
 			input = "";
 		} else {
 			status = "❌ Failed to send";
 		}
 	} catch (e) {
-		status = "! Network error";
+		status = "🌐 Network error";
 	} finally {
 		isSending = false;
 		setTimeout(() => (status = ""), 3000);
@@ -124,10 +127,11 @@ async function sendClipboard() {
 
 async function pasteFromClipboard() {
 	isPasting = true;
+	status = "📥 Pasting from clipboard...";
 	try {
 		const text = await navigator.clipboard.readText();
 		input = text;
-		status = "📥 Pasted from device clipboard";
+		status = "✅ Pasted from device clipboard";
 	} catch (err) {
 		status = "❌ Clipboard access denied";
 	} finally {
@@ -144,7 +148,6 @@ function clearInput() {
 
 function useFromHistory(text: string) {
 	input = text;
-	showHistory = false;
 	status = "📝 Loaded from history";
 	setTimeout(() => (status = ""), 2000);
 }
@@ -177,6 +180,7 @@ async function handleFileUpload(event: Event) {
 	if (!file || !serverUrl || !isConnected) return;
 
 	status = "⬆ Uploading file...";
+	isSending = true; // Use isSending to disable other actions during upload
 	const formData = new FormData();
 	formData.append("file", file);
 
@@ -192,555 +196,559 @@ async function handleFileUpload(event: Event) {
 			status = "❌ Upload failed";
 		}
 	} catch (err) {
-		status = "! Network error during upload";
+		status = "🌐 Network error during upload";
 	} finally {
+		isSending = false;
 		setTimeout(() => (status = ""), 3000);
 	}
 }
 </script>
 
-<div class="app">
+<div class="app-container">
+  <!-- HEADER -->
   <header class="header">
     <div class="title">
       <ClipboardCopy size={24} />
       <h1>Clipboard Share</h1>
     </div>
     <div class="connection-status">
-      {#if isChecking}
+      {#if isChecking && !isConnected}
         <div class="spinner"></div>
         <span>Checking...</span>
       {:else if isConnected}
-        <Wifi size={16} class="connected" />
-        <span class="connected">Connected</span>
+        <Wifi size={16} class="icon-connected" />
+        <span class="text-connected">Connected</span>
       {:else}
-        <WifiOff size={16} class="disconnected" />
-        <span class="disconnected">Offline</span>
+        <WifiOff size={16} class="icon-disconnected" />
+        <span class="text-disconnected">Offline</span>
       {/if}
     </div>
   </header>
 
-  <div class="container">
-    <div class="server-section">
-      <label class="input-group">
-        <Server size={18} />
-        <input
-          type="text"
-          bind:value={serverUrl}
-          on:blur={saveServer}
-          placeholder="http://192.168.x.x:3000"
-          class="server-input"
-        />
-        <button 
-          on:click={checkServerConnection} 
-          disabled={isChecking || !serverUrl.trim()}
-          class="check-btn"
-          title="Test connection"
-        >
-          {#if isChecking}
-            <div class="spinner-small"></div>
-          {:else}
-            Check
-          {/if}
-        </button>
-      </label>
-    </div>
-
-    <div class="main-content">
-      <div class="textarea-container">
-        <textarea 
-          bind:value={input} 
-          placeholder="Enter text to share across devices..."
-          rows="8"
-        ></textarea>
-        <input type="file" id="fileInput" hidden on:change={handleFileUpload} />
-        <button class="secondary small upload-btn" on:click={() => document.getElementById('fileInput')?.click()}>
-          📤 Upload File
-        </button>
-        <div class="textarea-actions">
-          <button 
-            on:click={clearInput} 
-            disabled={!input.trim()}
-            class="secondary small"
-            title="Clear input"
+  <!-- MAIN LAYOUT -->
+  <main class="main-layout">
+    
+    <!-- LEFT COLUMN: CORE ACTIONS -->
+    <div class="main-column">
+      <!-- 1. Server Configuration -->
+      <div class="card">
+        <div class="input-group">
+          <Server size={20} class="input-icon" />
+          <input
+            type="text"
+            bind:value={serverUrl}
+            on:blur={saveServer}
+            placeholder="http://server-ip-address:3000"
+            class="server-input"
+          />
+          <button
+            on:click={checkServerConnection}
+            disabled={isChecking || !serverUrl.trim()}
+            class="btn btn-secondary btn-small"
+            title="Test connection"
           >
-            <Trash2 size={14} />
-          </button>
-          <button 
-            on:click={downloadAsFile} 
-            disabled={!input.trim()}
-            class="secondary small"
-            title="Download as file"
-          >
-            <Download size={14} />
+            {#if isChecking} <div class="spinner-small"></div> {:else} Check {/if}
           </button>
         </div>
       </div>
 
-      <div class="button-grid">
-        <button 
-          on:click={pasteFromClipboard} 
-          disabled={isPasting}
-          class="secondary"
-          title="Paste from device clipboard"
-        >
-          {#if isPasting}
-            <div class="spinner-small"></div>
-          {:else}
-            <ClipboardPaste size={18} />
-          {/if}
-          Paste from Device
-        </button>
-
-        <button 
-          on:click={sendClipboard}
-          disabled={!serverUrl || !input.trim() || !isConnected || isSending}
-          class="primary"
-          title="Send to server"
-        >
-          {#if isSending}
-            <div class="spinner-small"></div>
-          {:else}
-            <ClipboardCopy size={18} />
-          {/if}
-          Send to Server
-        </button>
-      </div>
-
-      <div class="secondary-actions">
-        <button 
-          on:click={() => showHistory = !showHistory}
-          class="secondary small"
-          disabled={clipboardHistory.length === 0}
-        >
-          <History size={16} />
-          History ({clipboardHistory.length})
-        </button>
-        
-        <button 
-          on:click={() => showSettings = !showSettings}
-          class="secondary small"
-        >
-          <Settings size={16} />
-          Settings
-        </button>
-      </div>
-
-      {#if showHistory && clipboardHistory.length > 0}
-        <div class="history-panel">
-          <div class="panel-header">
-            <h3>Recent Clipboard History</h3>
-            <button on:click={clearHistory} class="danger small">
-              <Trash2 size={14} />
-              Clear All
+      <!-- 2. Text/File Input Area -->
+      <div class="card">
+        <div class="textarea-wrapper">
+          <textarea
+            bind:value={input}
+            placeholder="Enter text to share, or paste from your clipboard..."
+            rows="10"
+          ></textarea>
+          <div class="textarea-controls">
+            <button on:click={clearInput} disabled={!input.trim()} class="btn-icon" title="Clear input">
+              <Trash2 size={16} />
+            </button>
+            <button on:click={downloadAsFile} disabled={!input.trim()} class="btn-icon" title="Download as file">
+              <Download size={16} />
             </button>
           </div>
-          <div class="history-list">
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            {#each clipboardHistory as item}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div class="history-item" on:click={() => useFromHistory(item)}>
-                <div class="history-text">{item.length > 100 ? item.slice(0, 100) + '...' : item}</div>
-                <div class="history-meta">{item.length} chars</div>
+        </div>
+        
+        <div class="input-actions">
+          <button on:click={pasteFromClipboard} disabled={isPasting || isSending} class="btn btn-secondary">
+             {#if isPasting} <div class="spinner-small"></div> {:else} <ClipboardPaste size={18} /> {/if}
+            <span>Paste from Device</span>
+          </button>
+          <input type="file" id="fileInput" hidden on:change={handleFileUpload} />
+          <button class="btn btn-secondary" on:click={() => document.getElementById('fileInput')?.click()} disabled={isSending || !isConnected}>
+            <span>📤 Upload File</span>
+          </button>
+        </div>
+
+        <button
+          on:click={sendClipboard}
+          disabled={!serverUrl.trim() || !input.trim() || !isConnected || isSending}
+          class="btn btn-primary send-button"
+          title="Send content to the server"
+        >
+          {#if isSending} <div class="spinner-small"></div> {:else} <ClipboardCopy size={18} /> {/if}
+          <span>Send to Server</span>
+        </button>
+        
+        <div class="status-bar">
+          <p class="status-text">{status || 'Ready'}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: SIDEBAR FOR HISTORY/SETTINGS -->
+    <div class="sidebar-column">
+      <div class="card">
+        <!-- Tab Navigation -->
+        <nav class="tab-nav">
+          <button
+            class:active={currentTab === 'history'}
+            on:click={() => currentTab = 'history'}
+          >
+            <History size={16} />
+            <span>History ({clipboardHistory.length})</span>
+          </button>
+          <button
+            class:active={currentTab === 'settings'}
+            on:click={() => currentTab = 'settings'}
+          >
+            <Settings size={16} />
+            <span>Settings</span>
+          </button>
+        </nav>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+          {#if currentTab === 'history'}
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Recent Clips</h3>
+                <button on:click={clearHistory} class="btn btn-danger btn-small" disabled={clipboardHistory.length === 0}>
+                  <Trash2 size={14} /> Clear All
+                </button>
               </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
+              <div class="history-list">
+                {#each clipboardHistory as text (text)}
+                  <div class="history-item" on:click={() => useFromHistory(text)} on:keydown={() => useFromHistory(text)} role="button" tabindex="0">
+                    <p class="history-text">{text.length > 120 ? text.slice(0, 120) + '…' : text}</p>
+                    <span class="history-meta">{text.length} chars</span>
+                  </div>
+                {:else}
+                  <div class="empty-state">
+                    <p>No history yet.</p>
+                    <span>Sent items will appear here.</span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
 
-      {#if showSettings}
-        <div class="settings-panel">
-          <div class="panel-header">
-            <h3>Settings</h3>
-          </div>
-          <div class="settings-list">
-            <!-- svelte-ignore a11y_label_has_associated_control -->
-            <div class="setting-item">
-              <!-- svelte-ignore a11y_label_has_associated_control -->
-              <label>
-                <strong>Auto-check connection:</strong>
-                <span>Every 30 seconds when server URL is set</span>
-              </label>
+          {#if currentTab === 'settings'}
+            <div class="panel">
+               <div class="panel-header">
+                <h3>Application Settings</h3>
+              </div>
+              <div class="settings-list">
+                <div class="setting-item">
+                  <strong>Auto-check connection</strong>
+                  <span>Every 30 seconds</span>
+                </div>
+                <div class="setting-item">
+                  <strong>History limit</strong>
+                  <span>Keeps last 10 entries</span>
+                </div>
+                <div class="setting-item">
+                  <strong>Connection timeout</strong>
+                  <span>5 seconds</span>
+                </div>
+              </div>
             </div>
-            <!-- svelte-ignore a11y_label_has_associated_control -->
-            <!-- svelte-ignore a11y_label_has_associated_control -->
-            <div class="setting-item">
-              <label>
-                <strong>History limit:</strong>
-                <span>Keeps last 10 clipboard entries</span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <!-- svelte-ignore a11y_label_has_associated_control -->
-              <label>
-                <strong>Connection timeout:</strong>
-                <span>5 seconds</span>
-              </label>
-            </div>
-          </div>
+          {/if}
         </div>
-      {/if}
+      </div>
     </div>
-
-    <div class="status-bar">
-      <div class="status-text">{status}</div>
-    </div>
-  </div>
+  </main>
 </div>
 
 <style>
-  .app {
-    min-height: 100vh;
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1a365d 100%);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: #e2e8f0;
+  /* --- DESIGN SYSTEM: CSS Variables --- */
+  :root {
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+
+    --color-bg: #0f172a; /* slate-900 */
+    --color-bg-card: #1e293b; /* slate-800 */
+    --color-bg-input: #0f172a; /* slate-900 */
+    --color-border: #334155; /* slate-700 */
+    --color-border-focus: #3b82f6; /* blue-500 */
+    
+    --color-text-primary: #f1f5f9; /* slate-100 */
+    --color-text-secondary: #94a3b8; /* slate-400 */
+    --color-text-placeholder: #64748b; /* slate-500 */
+
+    --color-accent: #3b82f6; /* blue-500 */
+    --color-accent-hover: #2563eb; /* blue-600 */
+    --color-danger: #ef4444; /* red-500 */
+    --color-danger-hover: #dc2626; /* red-600 */
+    
+    --color-status-connected: #22c55e; /* green-500 */
+    --color-status-disconnected: #f87171; /* red-400 */
+    
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-border-focus) 25%, transparent);
   }
 
+  /* --- GLOBAL STYLES --- */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  .app-container {
+    min-height: 100vh;
+    background-color: var(--color-bg);
+    font-family: var(--font-sans);
+    color: var(--color-text-primary);
+    padding: 1.5rem;
+  }
+  
+  /* --- HEADER --- */
   .header {
-    background: rgba(15, 23, 42, 0.8);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(59, 130, 246, 0.2);
-    padding: 1rem 2rem;
+    max-width: 1200px;
+    margin: 0 auto 2rem auto;
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-
   .title {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    color: white;
   }
-
   .title h1 {
-    margin: 0;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 600;
   }
-
   .connection-status {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    color: white;
     font-size: 0.9rem;
-    font-weight: 500;
+    background-color: var(--color-bg-card);
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
   }
+  .text-connected { color: var(--color-status-connected); }
+  .text-disconnected { color: var(--color-status-disconnected); }
 
-  .connected {
-    color: #4ade80;
-  }
 
-  .disconnected {
-    color: #f87171;
-  }
-
-  .container {
-    max-width: 800px;
+  /* --- LAYOUT --- */
+  .main-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 2rem;
+    align-items: start;
+  }
+  .main-column, .sidebar-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
   }
 
-  .server-section {
-    margin-bottom: 2rem;
+  @media (max-width: 900px) {
+    .main-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  /* --- COMPONENTS --- */
+  .card {
+    background-color: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
   }
 
+  /* Server Input */
   .input-group {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    background: rgba(30, 41, 59, 0.95);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 12px;
-    padding: 1rem;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
-
   .server-input {
-    flex: 1;
+    flex-grow: 1;
+    background: none;
     border: none;
     outline: none;
-    background: transparent;
+    color: var(--color-text-primary);
     font-size: 1rem;
-    padding: 0.5rem;
-    color: #e2e8f0;
+    font-family: var(--font-mono);
+    min-width: 0;
   }
-
   .server-input::placeholder {
-    color: #94a3b8;
+    color: var(--color-text-placeholder);
+    font-family: var(--font-sans);
   }
 
-  .check-btn {
-    background: #3b82f6;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    min-width: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .check-btn:hover:not(:disabled) {
-    background: #2563eb;
-    transform: translateY(-1px);
-  }
-
-  .check-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .main-content {
-    background: rgba(30, 41, 59, 0.9);
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    border-radius: 16px;
-    padding: 2rem;
-    box-shadow: 0 20px 64px rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(10px);
-  }
-
-  .textarea-container {
+  /* Textarea */
+  .textarea-wrapper {
     position: relative;
-    margin-bottom: 1.5rem;
   }
-
   textarea {
     width: 100%;
-    min-height: 160px;
-    padding: 1.25rem;
+    background-color: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    padding-right: 3.5rem;
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
     font-size: 1rem;
-    border: 2px solid #334155;
-    border-radius: 12px;
+    line-height: 1.6;
     resize: vertical;
-    font-family: inherit;
-    line-height: 1.5;
-    transition: border-color 0.2s;
-    background: rgba(15, 23, 42, 0.8);
-    color: #e2e8f0;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
-
-  textarea::placeholder {
-    color: #94a3b8;
-  }
-
   textarea:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    border-color: var(--color-border-focus);
+    box-shadow: var(--shadow-focus);
   }
-
-  .textarea-actions {
+  textarea::placeholder {
+    color: var(--color-text-placeholder);
+  }
+  .textarea-controls {
     position: absolute;
     top: 0.75rem;
     right: 0.75rem;
     display: flex;
-    gap: 0.5rem;
+    gap: 0.25rem;
   }
 
-  .button-grid {
+  /* Actions below textarea */
+  .input-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
-    margin-bottom: 1.5rem;
+    margin-top: 1rem;
+  }
+  .send-button {
+    margin-top: 1rem;
+    width: 100%;
+  }
+  
+  /* Status Bar */
+  .status-bar {
+    margin-top: 1rem;
+    text-align: center;
+  }
+  .status-text {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    min-height: 1.25rem;
+    transition: color 0.3s;
+    font-weight: 500;
   }
 
-  button {
+  /* --- BUTTONS --- */
+  .btn, .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: inherit;
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s, border-color 0.2s, opacity 0.2s;
+    border: 1px solid transparent;
+  }
+  .btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .btn-primary {
+    background-color: var(--color-accent);
+    color: white;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--color-accent-hover);
+  }
+  
+  .btn-secondary {
+    background-color: color-mix(in srgb, var(--color-border) 40%, transparent);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--color-border);
+  }
+  
+  .btn-danger {
+    background-color: transparent;
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background-color: var(--color-danger);
+    color: white;
+  }
+  
+  .btn-small {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+  }
+
+  .btn-icon {
+    background-color: transparent;
+    color: var(--color-text-secondary);
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+  }
+  .btn-icon:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--color-bg) 50%, transparent);
+    color: var(--color-text-primary);
+  }
+
+  /* --- SIDEBAR: TABS, HISTORY, SETTINGS --- */
+  .tab-nav {
+    display: flex;
+    background-color: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: 0.25rem;
+  }
+  .tab-nav button {
+    flex: 1;
+    padding: 0.5rem;
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 0.9rem;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0.875rem 1.25rem;
-    border: none;
-    border-radius: 10px;
-    font-size: 1rem;
-    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
-    min-height: 48px;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  .tab-nav button:hover:not(:disabled) {
+    color: var(--color-text-primary);
+  }
+  .tab-nav button.active {
+    background-color: var(--color-border);
+    color: var(--color-text-primary);
   }
 
-  .primary {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    color: white;
-    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+  .tab-content {
+    margin-top: 1rem;
+    min-height: 200px;
   }
-
-  .primary:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
-  }
-
-  .secondary {
-    background: rgba(51, 65, 85, 0.8);
-    color: #e2e8f0;
-    border: 1px solid #475569;
-  }
-
-  .secondary:hover:not(:disabled) {
-    background: rgba(71, 85, 105, 0.9);
-    transform: translateY(-1px);
-  }
-
-  .small {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    min-height: 36px;
-  }
-
-  .danger {
-    background: #ef4444;
-    color: white;
-  }
-
-  .danger:hover:not(:disabled) {
-    background: #dc2626;
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none !important;
-  }
-
-  .secondary-actions {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .history-panel, .settings-panel {
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-  }
-
   .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--color-border);
     margin-bottom: 1rem;
   }
-
   .panel-header h3 {
-    margin: 0;
-    color: #e2e8f0;
-    font-size: 1.1rem;
+    font-size: 1rem;
+    font-weight: 600;
   }
 
   .history-list {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    max-height: 40vh;
+    overflow-y: auto;
   }
-
   .history-item {
-    background: rgba(30, 41, 59, 0.9);
-    border: 1px solid rgba(71, 85, 105, 0.6);
-    border-radius: 8px;
     padding: 0.75rem;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background-color 0.2s, border-color 0.2s;
   }
-
-  .history-item:hover {
-    border-color: #3b82f6;
-    background: rgba(51, 65, 85, 0.9);
-    transform: translateX(4px);
+  .history-item:hover, .history-item:focus {
+    background-color: var(--color-bg);
+    border-color: var(--color-border);
+    outline: none;
   }
-
   .history-text {
     font-size: 0.9rem;
-    line-height: 1.4;
-    color: #e2e8f0;
+    line-height: 1.5;
     word-break: break-word;
+    color: var(--color-text-secondary);
+    transition: color 0.2s;
   }
-
+  .history-item:hover .history-text, .history-item:focus .history-text {
+    color: var(--color-text-primary);
+  }
   .history-meta {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--color-text-placeholder);
     margin-top: 0.25rem;
   }
-
+  .empty-state {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--color-text-secondary);
+  }
+  .empty-state span {
+    font-size: 0.9rem;
+    color: var(--color-text-placeholder);
+  }
+  
   .settings-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
   }
-
-  .setting-item label {
+  .setting-item {
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    color: #e2e8f0;
+    justify-content: space-between;
+    align-items: center;
   }
-
-  .setting-item span {
-    font-size: 0.875rem;
-    color: #94a3b8;
-  }
-
-  .status-bar {
-    text-align: center;
-    margin-top: 1.5rem;
-  }
-
-  .status-text {
-    color: rgba(226, 232, 240, 0.9);
-    font-size: 0.9rem;
+  .setting-item strong {
     font-weight: 500;
-    min-height: 1.2rem;
+  }
+  .setting-item span {
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+    background-color: var(--color-bg);
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
   }
 
+  /* --- UTILITIES --- */
   .spinner, .spinner-small {
-    border: 2px solid transparent;
-    border-top: 2px solid currentColor;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-text-primary);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
-
-  .spinner {
-    width: 16px;
-    height: 16px;
-  }
-
-  .spinner-small {
-    width: 14px;
-    height: 14px;
-  }
-
+  .spinner { width: 14px; height: 14px; }
+  .spinner-small { width: 12px; height: 12px; }
+  
   @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-
-  @media (max-width: 768px) {
-    .header {
-      padding: 1rem;
-    }
-    
-    .container {
-      padding: 1rem;
-    }
-    
-    .button-grid {
-      grid-template-columns: 1fr;
-    }
-    
-    .secondary-actions {
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-  }
-
-  .upload-btn{
-    margin-top: 1rem;
+    to { transform: rotate(360deg); }
   }
 </style>
