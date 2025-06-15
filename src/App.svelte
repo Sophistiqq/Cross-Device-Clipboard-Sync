@@ -1,175 +1,202 @@
 <script lang="ts">
-  import { 
-    ClipboardCopy, 
-    ClipboardPaste, 
-    Server, 
-    Wifi, 
-    WifiOff, 
-    Trash2, 
-    History,
-    Download,
-    Settings
-  } from "lucide-svelte";
-  import { onMount } from "svelte";
+import {
+	ClipboardCopy,
+	ClipboardPaste,
+	Server,
+	Wifi,
+	WifiOff,
+	Trash2,
+	History,
+	Download,
+	Settings,
+} from "lucide-svelte";
+import { onMount } from "svelte";
 
-  let serverUrl = "";
-  let input = "";
-  let status = "";
-  let isConnected = false;
-  let isChecking = false;
-  let isSending = false;
-  let isPasting = false;
-  let clipboardHistory: string[] = [];
-  let showHistory = false;
-  let showSettings = false;
-  let autoCheckInterval: number;
+let serverUrl = "";
+let input = "";
+let status = "";
+let isConnected = false;
+let isChecking = false;
+let isSending = false;
+let isPasting = false;
+let clipboardHistory: string[] = [];
+let showHistory = false;
+let showSettings = false;
+let autoCheckInterval: number;
 
-  onMount(() => {
-    serverUrl = localStorage.getItem("cdcs-server") || "";
-    const savedHistory = localStorage.getItem("cdcs-history");
-    if (savedHistory) {
-      clipboardHistory = JSON.parse(savedHistory);
-    }
-    
-    if (serverUrl) {
-      checkServerConnection();
-      // Auto-check connection every 30 seconds
-      autoCheckInterval = setInterval(checkServerConnection, 30000);
-    }
+onMount(() => {
+	serverUrl = localStorage.getItem("cdcs-server") || "";
+	const savedHistory = localStorage.getItem("cdcs-history");
+	if (savedHistory) {
+		clipboardHistory = JSON.parse(savedHistory);
+	}
 
-    return () => {
-      if (autoCheckInterval) clearInterval(autoCheckInterval);
-    };
-  });
+	if (serverUrl) {
+		checkServerConnection();
+		// Auto-check connection every 30 seconds
+		autoCheckInterval = setInterval(checkServerConnection, 30000);
+	}
 
-  async function checkServerConnection() {
-    if (!serverUrl.trim()) return;
-    
-    isChecking = true;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const res = await fetch(`${serverUrl}/`, {
-        method: 'GET',
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      isConnected = res.ok;
-      
-      if (isConnected) {
-        status = "🟢 Server connected";
-      } else {
-        status = "🔴 Server responded with error";
-      }
-    } catch (e: any) {
-      isConnected = false;
-      if (e.name === 'AbortError') {
-        status = "⏱️ Server timeout";
-      } else {
-        status = "🔴 Server unreachable";
-      }
-    } finally {
-      isChecking = false;
-      setTimeout(() => (status = ""), 3000);
-    }
-  }
+	return () => {
+		if (autoCheckInterval) clearInterval(autoCheckInterval);
+	};
+});
 
-  function saveServer() {
-    localStorage.setItem("cdcs-server", serverUrl);
-    status = "💾 Server saved";
-    setTimeout(() => (status = ""), 2000);
-    
-    if (serverUrl) {
-      checkServerConnection();
-      if (autoCheckInterval) clearInterval(autoCheckInterval);
-      autoCheckInterval = setInterval(checkServerConnection, 30000);
-    }
-  }
+async function checkServerConnection() {
+	if (!serverUrl.trim()) return;
 
-  function addToHistory(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || clipboardHistory.includes(trimmed)) return;
-    
-    clipboardHistory = [trimmed, ...clipboardHistory.slice(0, 9)]; // Keep last 10
-    localStorage.setItem("cdcs-history", JSON.stringify(clipboardHistory));
-  }
+	isChecking = true;
+	try {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  async function sendClipboard() {
-    if (!serverUrl || !input.trim() || !isConnected) return;
-    
-    isSending = true;
-    try {
-      const res = await fetch(`${serverUrl}/clipboard`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input }),
-      });
-      
-      if (res.ok) {
-        status = "📋 Sent successfully!";
-        addToHistory(input);
-        input = "";
-      } else {
-        status = "❌ Failed to send";
-      }
-    } catch (e) {
-      status = "⚠️ Network error";
-    } finally {
-      isSending = false;
-      setTimeout(() => (status = ""), 3000);
-    }
-  }
+		const res = await fetch(`${serverUrl}/`, {
+			method: "GET",
+			signal: controller.signal,
+		});
 
-  async function pasteFromClipboard() {
-    isPasting = true;
-    try {
-      const text = await navigator.clipboard.readText();
-      input = text;
-      status = "📥 Pasted from device clipboard";
-    } catch (err) {
-      status = "❌ Clipboard access denied";
-    } finally {
-      isPasting = false;
-      setTimeout(() => (status = ""), 2000);
-    }
-  }
+		clearTimeout(timeoutId);
+		isConnected = res.ok;
 
-  function clearInput() {
-    input = "";
-    status = "🗑️ Input cleared";
-    setTimeout(() => (status = ""), 1500);
-  }
+		if (isConnected) {
+			status = "🟢 Server connected";
+		} else {
+			status = "🔴 Server responded with error";
+		}
+	} catch (e: any) {
+		isConnected = false;
+		if (e.name === "AbortError") {
+			status = "⏱ Server timeout";
+		} else {
+			status = "🔴 Server unreachable";
+		}
+	} finally {
+		isChecking = false;
+		setTimeout(() => (status = ""), 3000);
+	}
+}
 
-  function useFromHistory(text: string) {
-    input = text;
-    showHistory = false;
-    status = "📝 Loaded from history";
-    setTimeout(() => (status = ""), 2000);
-  }
+function saveServer() {
+	localStorage.setItem("cdcs-server", serverUrl);
+	status = "💾 Server saved";
+	setTimeout(() => (status = ""), 2000);
 
-  function clearHistory() {
-    clipboardHistory = [];
-    localStorage.removeItem("cdcs-history");
-    status = "🗑️ History cleared";
-    setTimeout(() => (status = ""), 2000);
-  }
+	if (serverUrl) {
+		checkServerConnection();
+		if (autoCheckInterval) clearInterval(autoCheckInterval);
+		autoCheckInterval = setInterval(checkServerConnection, 30000);
+	}
+}
 
-  function downloadAsFile() {
-    if (!input.trim()) return;
-    
-    const blob = new Blob([input], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `clipboard-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    status = "💾 Downloaded as file";
-    setTimeout(() => (status = ""), 2000);
-  }
+function addToHistory(text: string) {
+	const trimmed = text.trim();
+	if (!trimmed || clipboardHistory.includes(trimmed)) return;
+
+	clipboardHistory = [trimmed, ...clipboardHistory.slice(0, 9)]; // Keep last 10
+	localStorage.setItem("cdcs-history", JSON.stringify(clipboardHistory));
+}
+
+async function sendClipboard() {
+	if (!serverUrl || !input.trim() || !isConnected) return;
+
+	isSending = true;
+	try {
+		const res = await fetch(`${serverUrl}/clipboard`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: input }),
+		});
+
+		if (res.ok) {
+			status = "📋 Sent successfully!";
+			addToHistory(input);
+			input = "";
+		} else {
+			status = "❌ Failed to send";
+		}
+	} catch (e) {
+		status = "! Network error";
+	} finally {
+		isSending = false;
+		setTimeout(() => (status = ""), 3000);
+	}
+}
+
+async function pasteFromClipboard() {
+	isPasting = true;
+	try {
+		const text = await navigator.clipboard.readText();
+		input = text;
+		status = "📥 Pasted from device clipboard";
+	} catch (err) {
+		status = "❌ Clipboard access denied";
+	} finally {
+		isPasting = false;
+		setTimeout(() => (status = ""), 2000);
+	}
+}
+
+function clearInput() {
+	input = "";
+	status = "🗑 Input cleared";
+	setTimeout(() => (status = ""), 1500);
+}
+
+function useFromHistory(text: string) {
+	input = text;
+	showHistory = false;
+	status = "📝 Loaded from history";
+	setTimeout(() => (status = ""), 2000);
+}
+
+function clearHistory() {
+	clipboardHistory = [];
+	localStorage.removeItem("cdcs-history");
+	status = "🗑 History cleared";
+	setTimeout(() => (status = ""), 2000);
+}
+
+function downloadAsFile() {
+	if (!input.trim()) return;
+
+	const blob = new Blob([input], { type: "text/plain" });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = `clipboard-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.txt`;
+	a.click();
+	URL.revokeObjectURL(url);
+
+	status = "💾 Downloaded as file";
+	setTimeout(() => (status = ""), 2000);
+}
+
+async function handleFileUpload(event: Event) {
+	const target = event.target as HTMLInputElement;
+	const file = target.files?.[0];
+	if (!file || !serverUrl || !isConnected) return;
+
+	status = "⬆ Uploading file...";
+	const formData = new FormData();
+	formData.append("file", file);
+
+	try {
+		const res = await fetch(`${serverUrl}/upload`, {
+			method: "POST",
+			body: formData,
+		});
+
+		if (res.ok) {
+			status = "✅ File uploaded!";
+		} else {
+			status = "❌ Upload failed";
+		}
+	} catch (err) {
+		status = "! Network error during upload";
+	} finally {
+		setTimeout(() => (status = ""), 3000);
+	}
+}
 </script>
 
 <div class="app">
@@ -225,7 +252,10 @@
           placeholder="Enter text to share across devices..."
           rows="8"
         ></textarea>
-        
+        <input type="file" id="fileInput" hidden on:change={handleFileUpload} />
+        <button class="secondary small upload-btn" on:click={() => document.getElementById('fileInput')?.click()}>
+          📤 Upload File
+        </button>
         <div class="textarea-actions">
           <button 
             on:click={clearInput} 
@@ -708,5 +738,9 @@
       flex-direction: column;
       gap: 0.5rem;
     }
+  }
+
+  .upload-btn{
+    margin-top: 1rem;
   }
 </style>
